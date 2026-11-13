@@ -1,0 +1,17 @@
+{
+  "providers": {
+    "llamacpp": {
+      "id": "llamacpp",
+      "name": "llama.cpp",
+      "type": "llamacpp",
+      "base_url": "http://127.0.0.1:8080",
+      "api_key": "none"
+    }
+  },
+  "models": {
+    "large": {
+      "model": "gpt-oss-20b-MXFP4",
+      "provider": "llamacpp"
+    }
+  }
+}

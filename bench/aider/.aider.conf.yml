@@ -1,0 +1,12 @@
+openai-api-base: http://127.0.0.1:8080/v1
+openai-api-key: none
+auto-commits: false
+dirty-commits: false
+git: true
+yes-always: true
+attribute-author: false
+attribute-committer: false
+pretty: false
+stream: false
+map-tokens: 1024
+read: D:esti-harness-labenchules.md

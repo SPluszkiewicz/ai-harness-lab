@@ -1,0 +1,30 @@
+# Local installs (harness CLIs, node modules, venvs)
+bench/opencode/node_modules/
+bench/goose/**/goose.exe
+bench/goose/**/*.zip
+bench/crush/**/crush.exe
+bench/crush/**/*.zip
+bench/aider/site/
+bench/kilo/
+**/__pycache__/
+.venv/
+venv/
+
+# Working copies created by setup
+bench/work/
+
+# Raw per-trial dumps (keep summary.jsonl)
+bench/results/*/
+!bench/results/summary.jsonl
+!bench/results/summary-discarded-dirty-tree.jsonl
+
+# Secrets / local env
+.env
+.env.*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
