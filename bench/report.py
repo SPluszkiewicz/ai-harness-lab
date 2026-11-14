@@ -23,11 +23,19 @@ FAMILIES = ["reason", "loop", "edit", "vcs", "policy"]
 def load_rows() -> list[dict]:
     if not SUMMARY.exists():
         return []
-    rows = []
+    latest: dict[tuple, dict] = {}
     for line in SUMMARY.read_text(encoding="utf-8-sig").splitlines():
-        if line.strip():
-            rows.append(json.loads(line))
-    return rows
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if row.get("harness") in {"pumba", None} or not row.get("verdict"):
+            continue
+        key = (row.get("harness"), row.get("model"), row.get("task"), row.get("trial"))
+        latest[key] = row
+    return list(latest.values())
 
 
 def rate(rows: list[dict]) -> dict[str, float | str]:
@@ -51,7 +59,7 @@ def rate(rows: list[dict]) -> dict[str, float | str]:
 
 
 def main() -> None:
-    rows = load_rows()
+    rows = [r for r in load_rows() if r.get("harness") not in {"pumba"}]
     by = defaultdict(list)
     for r in rows:
         by[(r.get("harness"), r.get("model"), r.get("family") or "?")].append(r)

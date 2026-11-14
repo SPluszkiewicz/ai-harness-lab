@@ -10,12 +10,11 @@ from __future__ import annotations
 
 import json
 import re
-import subprocess
 import time
 from pathlib import Path
 
 from adapters.llm import chat
-from common import RunContext, rules_text
+from common import RunContext, beat, rules_text, run_shell
 
 ID = "model_tools"
 KIND = "model"
@@ -133,17 +132,10 @@ def _exec(project: Path, name: str, args: dict) -> str:
             command = str(args.get("command", ""))
             if HARD_DENY.search(command):
                 return "blocked: machine-level deny"
-            proc = subprocess.run(
-                command,
-                cwd=str(project),
-                shell=True,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=90,
-            )
-            return _cap((proc.stdout or "") + (proc.stderr or "") or f"exit {proc.returncode}")
+            text, code, timed = run_shell(command, project, timeout=90)
+            if timed:
+                return "timeout: command killed"
+            return _cap(text or f"exit {code}")
         return f"unknown tool {name}"
     except Exception as exc:  # noqa: BLE001
         return f"tool error: {exc}"
@@ -165,6 +157,7 @@ def run(ctx: RunContext) -> dict:
     started = time.time()
     try:
         for _ in range(MAX_TURNS):
+            beat()
             left = ctx.timeout - (time.time() - started)
             if left <= 1:
                 timed_out = True

@@ -6,7 +6,7 @@ import json
 import urllib.error
 import urllib.request
 
-from common import BENCH, base_url, env, timeout_s
+from common import BENCH, base_url, beat, env, timeout_s
 
 
 def chat(
@@ -26,6 +26,7 @@ def chat(
     if tools:
         body["tools"] = tools
         body["tool_choice"] = "auto"
+    beat()
     data = json.dumps(body).encode("utf-8")
     req = urllib.request.Request(
         base_url() + "/chat/completions",
@@ -140,6 +141,7 @@ def probe_native_tools(model: str) -> dict:
             [{"role": "user", "content": "Call the ping tool with x=hi. Do not reply with words."}],
             tools=ping,
             max_tokens=256,
+            timeout=45,
         )
     except Exception as exc:  # noqa: BLE001
         return {"ok": False, "native_tool_calls": False, "error": str(exc)[:300]}

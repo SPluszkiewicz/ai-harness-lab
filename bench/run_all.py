@@ -9,9 +9,12 @@
 from __future__ import annotations
 
 import argparse
+import faulthandler
 import json
 import os
 import sys
+import threading
+import time
 import traceback
 from datetime import datetime, timezone
 from pathlib import Path
@@ -25,7 +28,11 @@ from common import (  # noqa: E402
     RunContext,
     WORK,
     append_jsonl,
+    beat,
+    child_pid,
     ctest_release,
+    idle_seconds,
+    kill_tree,
     load_tasks,
     pid_is_running,
     reset_work,
@@ -33,6 +40,26 @@ from common import (  # noqa: E402
     snapshot,
     timeout_s,
 )
+
+# Persisted ERR/TIMEOUT stay done: transient blips are retried before the row is written.
+FINAL = {"PASS", "FAIL", "VACUOUS", "ERR", "TIMEOUT"}
+TRANSIENT_NEEDLES = (
+    "connection",
+    "refused",
+    "10061",
+    "10060",
+    "timed out",
+    "timeout",
+    "llm http",
+    "git reset",
+    "snapshot",
+    "unreachable",
+    "closed",
+    "docker",
+    "urlopen",
+    "temporary failure",
+)
+MAX_TRANSIENT = 3
 from oracles import oracle  # noqa: E402
 
 SUMMARY = RESULTS / "summary.jsonl"
@@ -42,36 +69,112 @@ LOCK = RESULTS / "run.lock"
 
 
 def log(msg: str) -> None:
+    beat()
     RESULTS.mkdir(parents=True, exist_ok=True)
     line = f"{datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')} {msg}"
     print(line, flush=True)
-    with LOG.open("a", encoding="utf-8") as fh:
-        fh.write(line + "\n")
+    try:
+        with LOG.open("a", encoding="utf-8") as fh:
+            fh.write(line + "\n")
+            fh.flush()
+    except OSError:
+        pass
 
 
-def done_keys() -> set[str]:
-    keys: set[str] = set()
+def _watchdog() -> None:
+    while True:
+        time.sleep(30)
+        limit = timeout_s() * 2 + 180
+        idle = idle_seconds()
+        if idle < limit:
+            continue
+        log(f"WATCHDOG no heartbeat for {int(idle)}s — exit 75 so the launcher resumes")
+        pid = child_pid()
+        if pid:
+            kill_tree(pid)
+        os._exit(75)
+
+
+def iter_rows():
     if not SUMMARY.exists():
-        return keys
+        return
     for line in SUMMARY.read_text(encoding="utf-8-sig").splitlines():
         if not line.strip():
             continue
         try:
-            row = json.loads(line)
+            yield json.loads(line)
         except json.JSONDecodeError:
             continue
-        keys.add(row_key(row.get("harness", ""), row.get("model", ""), row.get("task", ""), int(row.get("trial") or 0)))
+
+
+def done_keys() -> set[str]:
+    """Skip a cell only when a real verdict was recorded. Old rows without one are re-run."""
+    keys: set[str] = set()
+    for row in iter_rows():
+        if (row.get("verdict") or "") not in FINAL:
+            continue
+        keys.add(
+            row_key(
+                row.get("harness", ""),
+                row.get("model", ""),
+                row.get("task", ""),
+                int(row.get("trial") or 0),
+            )
+        )
     return keys
+
+
+def transient_failure(row: dict) -> bool:
+    """Connection / git / docker blip with no tool call. A real TIMEOUT is kept."""
+    if row.get("verdict") != "ERR":
+        return False
+    if int(row.get("tool_calls") or 0) > 0:
+        return False
+    blob = f"{row.get('why') or ''} {row.get('error') or ''}".lower()
+    return any(needle in blob for needle in TRANSIENT_NEEDLES)
+
+
+def shrink(row: dict) -> dict:
+    limits = {
+        "answer": 12000,
+        "raw_tail": 4000,
+        "diff": 8000,
+        "verify": 4000,
+        "error": 2000,
+        "why": 500,
+    }
+    for key, limit in limits.items():
+        value = row.get(key)
+        if isinstance(value, str) and len(value) > limit:
+            row[key] = value[:limit] + "\n…[truncated]"
+    return row
+
+
+def safe_model_dir(model: str) -> str:
+    cleaned = "".join(c if c not in '<>:"/\\|?*' else "_" for c in model).strip(" .")
+    return (cleaned[:80] or "model")
 
 
 def models_from(args: argparse.Namespace) -> list[str]:
     from adapters.llm import select_models
 
     explicit = [m.strip() for m in (args.models or "").split(",") if m.strip()]
-    chosen, notes = select_models(explicit or None)
-    for note in notes:
-        log(note)
-    return chosen
+    last = "no attempt"
+    for attempt in range(1, 11):
+        beat()
+        try:
+            chosen, notes = select_models(explicit or None)
+            for note in notes:
+                log(note)
+            if not chosen:
+                raise RuntimeError("empty model list")
+            return chosen
+        except Exception as exc:  # noqa: BLE001
+            last = str(exc)
+            log(f"LLM not ready ({exc}) {attempt}/10 — sleep 30s")
+            time.sleep(30)
+    log(f"ERROR: no usable model after 10 tries: {last}")
+    raise SystemExit(4)
 
 
 def verify_for(task: dict) -> str:
@@ -87,7 +190,7 @@ def verify_for(task: dict) -> str:
 
 def run_trial(mod, harness_id: str, kind: str, model: str, task: dict, trial: int) -> dict:
     project = reset_work(task)
-    raw_dir = RESULTS / harness_id / model
+    raw_dir = RESULTS / harness_id / safe_model_dir(model)
     raw_dir.mkdir(parents=True, exist_ok=True)
     ctx = RunContext(
         harness=harness_id,
@@ -122,7 +225,6 @@ def run_trial(mod, harness_id: str, kind: str, model: str, task: dict, trial: in
     row["why"] = scored.get("why")
     if "diff_lines" in scored:
         row["diff_lines"] = scored["diff_lines"]
-    append_jsonl(SUMMARY, row)
     return row
 
 
@@ -145,6 +247,11 @@ def main() -> int:
         log(f"stale lock (pid {old or '?'}); continuing (resume).")
     LOCK.parent.mkdir(parents=True, exist_ok=True)
     LOCK.write_text(str(os.getpid()), encoding="utf-8")
+    RESULTS.mkdir(parents=True, exist_ok=True)
+    fault_log = open(RESULTS / "faulthandler.log", "ab")  # noqa: SIM115
+    faulthandler.enable(file=fault_log)
+    faulthandler.dump_traceback_later(900, repeat=True, file=fault_log)
+    threading.Thread(target=_watchdog, name="bench-watchdog", daemon=True).start()
 
     try:
         if not (WORK / "sample" / ".git").exists():
@@ -170,7 +277,10 @@ def main() -> int:
             if mod is None:
                 skipped[hid] = "no adapter"
                 continue
-            ok, msg = mod.available()
+            try:
+                ok, msg = mod.available()
+            except Exception as exc:  # noqa: BLE001
+                ok, msg = False, str(exc)
             if not ok:
                 skipped[hid] = msg
                 log(f"SKIP {hid}: {msg}")
@@ -184,28 +294,28 @@ def main() -> int:
             kind = getattr(mod, "KIND", "harness")
             for model in models:
                 for tid in task_ids:
-                    task = tasks[tid]
+                    task = tasks.get(tid)
+                    if task is None:
+                        log(f"SKIP unknown task {tid}")
+                        continue
                     for trial in range(1, trials + 1):
                         total += 1
                         key = row_key(hid, model, tid, trial)
                         if key in done:
                             continue
                         log(f"RUN {key}")
-                        try:
-                            row = run_trial(mod, hid, kind, model, task, trial)
-                            log(
-                                f"  {row.get('verdict')} tools={row.get('tool_calls')} "
-                                f"why={row.get('why')}"
-                            )
-                        except Exception as exc:  # noqa: BLE001
-                            log(f"  ERR {key}: {exc}")
-                            append_jsonl(
-                                SUMMARY,
-                                {
+                        row: dict = {}
+                        for attempt in range(1, MAX_TRANSIENT + 1):
+                            try:
+                                row = run_trial(mod, hid, kind, model, task, trial)
+                            except Exception as exc:  # noqa: BLE001
+                                log(f"  ERR {key}: {exc}")
+                                row = {
                                     "harness": hid,
                                     "kind": kind,
                                     "model": model,
                                     "task": tid,
+                                    "family": task.get("family"),
                                     "trial": trial,
                                     "verdict": "ERR",
                                     "why": str(exc)[:300],
@@ -215,14 +325,32 @@ def main() -> int:
                                     "tool_calls": 0,
                                     "commits": 0,
                                     "outside_exists": True,
-                                },
+                                }
+                            if not transient_failure(row) or attempt == MAX_TRANSIENT:
+                                break
+                            delay = 20 * attempt
+                            log(
+                                f"  transient ({row.get('why')}); "
+                                f"retry {attempt}/{MAX_TRANSIENT} in {delay}s"
                             )
+                            time.sleep(delay)
+                        try:
+                            append_jsonl(SUMMARY, shrink(row))
+                        except Exception as exc:  # noqa: BLE001
+                            log(f"  could not record {key}: {exc}")
+                        log(
+                            f"  {row.get('verdict')} tools={row.get('tool_calls')} "
+                            f"why={row.get('why')}"
+                        )
                         ran += 1
                         done.add(key)
-                        PROGRESS.write_text(
-                            json.dumps({"ran": ran, "last": key, "skipped": skipped}, indent=2),
-                            encoding="utf-8",
-                        )
+                        try:
+                            PROGRESS.write_text(
+                                json.dumps({"ran": ran, "last": key, "skipped": skipped}, indent=2),
+                                encoding="utf-8",
+                            )
+                        except OSError:
+                            pass
         log(f"done. new={ran} skipped_harnesses={skipped}")
         return 0
     finally:

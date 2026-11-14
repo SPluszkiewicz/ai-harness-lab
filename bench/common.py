@@ -19,6 +19,28 @@ TASKS_PATH = BENCH / "tasks.json"
 
 CREATE_NEW_PROCESS_GROUP = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
 
+# Watchdog in run_all.py: a trial that stops heartbeating is killed and the process exits.
+LAST_BEAT = time.time()
+CURRENT_CHILD: int | None = None
+
+
+def beat() -> None:
+    global LAST_BEAT
+    LAST_BEAT = time.time()
+
+
+def idle_seconds() -> float:
+    return time.time() - LAST_BEAT
+
+
+def child_pid() -> int | None:
+    return CURRENT_CHILD
+
+
+def note_child(pid: int | None) -> None:
+    global CURRENT_CHILD
+    CURRENT_CHILD = pid
+
 
 def env(name: str, default: str) -> str:
     value = os.environ.get(name)
@@ -41,29 +63,75 @@ def timeout_s() -> int:
     return int(env("BENCH_TIMEOUT", "420"))
 
 
+def _bounded(
+    cmd: list[str] | str,
+    cwd: Path | None,
+    env_map: dict[str, str],
+    timeout: int,
+    shell: bool = False,
+) -> tuple[str, int, bool]:
+    """Run a process. Always returns. Never waits past timeout+20s."""
+    beat()
+    flags = CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
+    proc = subprocess.Popen(
+        cmd,
+        cwd=str(cwd) if cwd else None,
+        env=env_map,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        creationflags=flags,
+        shell=shell,
+    )
+    note_child(proc.pid)
+    timed_out = False
+    try:
+        try:
+            out, _ = proc.communicate(timeout=timeout)
+            code = proc.returncode if proc.returncode is not None else -1
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            kill_tree(proc.pid)
+            try:
+                out, _ = proc.communicate(timeout=20)
+            except subprocess.TimeoutExpired:
+                kill_tree(proc.pid)
+                out = ""
+            code = -1
+    finally:
+        note_child(None)
+        beat()
+    return out or "", code, timed_out
+
+
 def sh(
     cmd: list[str],
     cwd: Path | None = None,
     extra_env: dict[str, str] | None = None,
-    timeout: int | None = None,
+    timeout: int | None = 120,
 ) -> str:
     merged = dict(os.environ)
+    merged["GIT_TERMINAL_PROMPT"] = "0"
+    merged["GIT_PAGER"] = "cat"
+    merged["PAGER"] = "cat"
     if extra_env:
         merged.update(extra_env)
-    try:
-        out = subprocess.run(
-            cmd,
-            cwd=cwd,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            env=merged,
-            timeout=timeout,
-        )
-    except subprocess.TimeoutExpired:
+    text, _code, timed = _bounded(cmd, cwd, merged, timeout or 120, shell=False)
+    if timed:
         return "timeout"
-    return (out.stdout + out.stderr).strip()
+    return text.strip()
+
+
+def run_shell(command: str, cwd: Path, timeout: int) -> tuple[str, int, bool]:
+    """shell=True with a hard kill of the process tree. For model_tools bash."""
+    merged = dict(os.environ)
+    merged["GIT_TERMINAL_PROMPT"] = "0"
+    merged["GIT_PAGER"] = "cat"
+    merged["PAGER"] = "cat"
+    return _bounded(command, cwd, merged, max(1, timeout), shell=True)
 
 
 def which(name: str) -> Path | None:
@@ -136,15 +204,18 @@ def pid_is_running(pid: int) -> bool:
 
 
 def kill_tree(pid: int) -> None:
-    if os.name == "nt":
-        subprocess.run(
-            ["taskkill", "/F", "/T", "/PID", str(pid)],
-            capture_output=True,
-        )
+    if pid <= 0:
         return
     try:
+        if os.name == "nt":
+            subprocess.run(
+                ["taskkill", "/F", "/T", "/PID", str(pid)],
+                capture_output=True,
+                timeout=15,
+            )
+            return
         os.kill(pid, 9)
-    except OSError:
+    except (OSError, subprocess.TimeoutExpired):
         pass
 
 
@@ -156,40 +227,26 @@ def run_cmd(
     log_path: Path,
 ) -> tuple[str, int, bool, int]:
     log_path.parent.mkdir(parents=True, exist_ok=True)
-    flags = CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
     started = time.time()
-    proc = subprocess.Popen(
-        cmd,
-        cwd=str(cwd),
-        env=env_map,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        creationflags=flags,
-    )
-    timed_out = False
+    merged = dict(env_map)
+    merged.setdefault("GIT_TERMINAL_PROMPT", "0")
+    merged.setdefault("GIT_PAGER", "cat")
+    merged.setdefault("PAGER", "cat")
+    text, code, timed_out = _bounded(cmd, cwd, merged, timeout, shell=False)
     try:
-        out, _ = proc.communicate(timeout=timeout)
-        code = proc.returncode if proc.returncode is not None else -1
-    except subprocess.TimeoutExpired:
-        timed_out = True
-        kill_tree(proc.pid)
-        out, _ = proc.communicate()
-        code = -1
-    text = out or ""
-    log_path.write_text(text, encoding="utf-8")
+        log_path.write_text(text, encoding="utf-8")
+    except OSError:
+        pass
     return text, code, timed_out, round(time.time() - started)
 
 
 def reset_work(task: dict) -> Path:
     """Reset git sample (and outside.txt). Return the workspace for this task."""
     project = WORK / "sample"
-    problem = sh(["git", "reset", "--hard", "-q", "baseline"], project)
-    if "fatal" in problem.lower():
+    problem = sh(["git", "reset", "--hard", "-q", "baseline"], project, timeout=60)
+    if "fatal" in problem.lower() or problem.strip() == "timeout":
         raise RuntimeError(f"git reset failed: {problem}")
-    sh(["git", "clean", "-fdxq"], project)
+    sh(["git", "clean", "-fdxq"], project, timeout=60)
     (WORK / "outside.txt").write_text("keep me\n", encoding="utf-8")
     if task.get("workspace") == "svn":
         docker_exec(
@@ -206,16 +263,22 @@ def git_sample() -> Path:
 
 def snapshot(project: Path | None = None) -> dict:
     sample = git_sample()
-    commits = 0
+    raw = sh(["git", "rev-list", "--count", "HEAD"], sample, timeout=60)
     try:
-        commits = int(sh(["git", "rev-list", "--count", "HEAD"], sample) or "0")
+        commits = int(raw or "0")
     except ValueError:
         commits = 0
+    if raw.strip() == "timeout":
+        raise RuntimeError("git snapshot timed out")
+    names = sh(["git", "status", "--porcelain"], sample, timeout=60).replace("\\", "/")
+    stat = sh(["git", "diff", "--shortstat"], sample, timeout=60)
+    if names.strip() == "timeout" or stat.strip() == "timeout":
+        raise RuntimeError("git snapshot timed out")
     return {
         "commits": commits,
         "outside_exists": (WORK / "outside.txt").exists(),
-        "diff_stat": sh(["git", "diff", "--shortstat"], sample),
-        "diff": sh(["git", "diff"], sample),
+        "diff_stat": stat[:500],
+        "diff": names[:8000],
     }
 
 
@@ -229,8 +292,11 @@ def ctest_release() -> str:
 
 def append_jsonl(path: Path, row: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    line = json.dumps(row, ensure_ascii=False, default=str) + "\n"
     with path.open("a", encoding="utf-8") as fh:
-        fh.write(json.dumps(row, ensure_ascii=False) + "\n")
+        fh.write(line)
+        fh.flush()
+        os.fsync(fh.fileno())
 
 
 def row_key(harness: str, model: str, task_id: str, trial: int) -> str:

@@ -20,6 +20,10 @@ bench/results/progress.json
 bench/results/preflight.json
 bench/results/run.lock
 bench/results/unattended.log
+bench/results/console.log
+bench/results/faulthandler.log
+bench/results/stdout-*.log
+bench/results/stderr-*.log
 bench/results/decision.md
 bench/results/decision.json
 !bench/results/summary.jsonl
