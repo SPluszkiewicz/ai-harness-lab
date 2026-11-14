@@ -1,0 +1,73 @@
+{
+  "trials": 3,
+  "models_env": "BENCH_MODELS",
+  "comment": "EVO-5: do not default to the 14B. If BENCH_MODELS is unset, pick served ids matching models_prefer (substring). Qwen2.5-Coder-14B is a regression only — set it explicitly if you still want it. Missing harness binaries are skipped. Crush is G3=no so it is off.",
+  "models_prefer": [
+    "Qwen3.8",
+    "Mistral-Small-4",
+    "gpt-oss",
+    "Devstral",
+    "Qwen3-Coder"
+  ],
+  "models_skip_substrings": [
+    "embed",
+    "nomic",
+    "bge-",
+    "rerank",
+    "mmproj"
+  ],
+  "harnesses": [
+    {
+      "id": "model_chat",
+      "kind": "model",
+      "required": true,
+      "note": "LLM only: files inlined, no tools. Control for 'what the model knows'."
+    },
+    {
+      "id": "model_tools",
+      "kind": "model",
+      "required": true,
+      "note": "LLM + native OpenAI tool_calls, tiny allowlisted executor. No MCP, no prose fallback, no product UI."
+    },
+    {
+      "id": "opencode",
+      "kind": "harness",
+      "required": false
+    },
+    {
+      "id": "goose",
+      "kind": "harness",
+      "required": false
+    },
+    {
+      "id": "aider",
+      "kind": "harness",
+      "required": false
+    },
+    {
+      "id": "qwen",
+      "kind": "harness",
+      "required": false
+    },
+    {
+      "id": "pi",
+      "kind": "harness",
+      "required": false
+    },
+    {
+      "id": "kilo",
+      "kind": "harness",
+      "required": false
+    },
+    {
+      "id": "mini_swe",
+      "kind": "harness",
+      "required": false
+    },
+    {
+      "id": "cline",
+      "kind": "harness",
+      "required": false
+    }
+  ]
+}

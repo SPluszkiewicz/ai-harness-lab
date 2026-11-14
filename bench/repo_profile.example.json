@@ -1,0 +1,98 @@
+{
+  "_comment": "Copier vers repo_profile.json et remplir avec TON dépôt. Les prompts T1–T16 seront interpolés depuis ces champs. Ne pas committer de secrets.",
+  "worktree": {
+    "git_root": "D:\\\\path\\\\to\\\\checkout-git",
+    "svn_root": "D:\\\\path\\\\to\\\\checkout-svn",
+    "reset": "git reset --hard <tag-ou-sha> && git clean -fdxq"
+  },
+  "container": {
+    "name": "bench-tools",
+    "workdir": "/workspace/app",
+    "build_cmd": "cmake --preset <ton-preset> && cmake --build --preset <ton-preset>",
+    "debug_cmd": "cmake --preset <debug> && cmake --build --preset <debug>",
+    "test_cmd": "ctest --preset <ton-preset>",
+    "test_one_cmd": "ctest --preset <ton-preset> -R '<nom-exact>' --output-on-failure"
+  },
+  "slots": {
+    "build_default": {
+      "id": "T1",
+      "theme": "A. toolchain — cible documentée"
+    },
+    "compile_one_tu": {
+      "id": "T2",
+      "path": "src/<module>/Foo.cpp"
+    },
+    "one_test": {
+      "id": "T3",
+      "name": "<TEST_CASE ou gtest exact>"
+    },
+    "other_config": {
+      "id": "T9",
+      "label": "debug | RelWithDebInfo | -DFOO=ON"
+    },
+    "spec_vs_code": {
+      "id": "T4",
+      "question": "Que fait <Fonction> sur <cas d'erreur>, et où ?",
+      "chat_files": ["include/....hpp", "src/....cpp"],
+      "must_cite": "src/....cpp",
+      "must_claim": "<fait mécanique, ex. return nullptr / throw X>"
+    },
+    "callers_bounded": {
+      "id": "T5",
+      "symbol": "Namespace::Foo::bar",
+      "glob": "src/<module>/",
+      "expect_sites_max": 25
+    },
+    "two_hop": {
+      "id": "T11",
+      "symbol": "Namespace::RunFoo",
+      "not_symbol": "Namespace::Foo"
+    },
+    "needle": {
+      "id": "T16",
+      "token": "<identifiant rare, pas dans le README>",
+      "file": "src/....",
+      "value": "<valeur attendue dans la réponse>"
+    },
+    "why_green_or_red": {
+      "id": "T10",
+      "test_name": "<test skip / excluded / ifndef>",
+      "reason_a": "<filtre ctest/CMake>",
+      "reason_b": "<fait dans le cpp>"
+    },
+    "surgical_edit": {
+      "id": "T6",
+      "prompt": "<changement local, option déjà dans le CMake, ou cas d'API manquant d'une ligne>",
+      "allow_paths": ["src/<module>/", "tests/<module>/"],
+      "max_diff_lines": 40
+    },
+    "api_three_files": {
+      "id": "T12",
+      "header": "include/....hpp",
+      "source": "src/....cpp",
+      "test": "tests/....cpp",
+      "max_diff_lines": 80
+    },
+    "locality": {
+      "must_not_touch": ["src/<autre-module>/"]
+    },
+    "svn_head_file": {
+      "id": "T7",
+      "path": "src/....cpp",
+      "author": "<svn log -l 1>",
+      "message_contains": "<fragment>"
+    },
+    "svn_not_head": {
+      "id": "T13",
+      "path": "include/....hpp",
+      "author": "<pas HEAD>",
+      "message_contains": "<fragment>"
+    },
+    "svn_not_git": {
+      "id": "T14",
+      "path": "src/....cpp"
+    },
+    "policy_commit": { "id": "T8" },
+    "policy_trap": { "id": "T15" }
+  }
+}
