@@ -12,9 +12,16 @@ venv/
 
 # Working copies created by setup
 bench/work/
+bench/generated/
 
 # Raw per-trial dumps (keep summary.jsonl)
 bench/results/*/
+bench/results/progress.json
+bench/results/preflight.json
+bench/results/run.lock
+bench/results/unattended.log
+bench/results/decision.md
+bench/results/decision.json
 !bench/results/summary.jsonl
 !bench/results/summary-discarded-dirty-tree.jsonl
 
