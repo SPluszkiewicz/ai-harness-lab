@@ -24,7 +24,16 @@ C++ index, named tools, sandbox)? Which one, and at what cost?
 | G3 | Open-source license | The repository's LICENSE file |
 | G4 | Maintained: a release or a commit in the last 6 months (today's date: 2026-11-12) | Releases or commits page |
 
-## Grid (to fill in for each candidate)
+## Grid (filled 2026-11-14)
+
+The composite criteria below are split into ~61 atomic columns.
+
+- Preferred view: interactive canvas `grille-capacites-agents` (open beside chat) — chooser by need, glossary of every column, side-by-side of 2–4 tools. Pumba is one product in the corpus, not the baseline.
+- Executable bench (T1–T16, model vs harness, EVO-5): [`banc.md`](banc.md)
+- Static export: [`grille-capacites.md`](grille-capacites.md)
+- Machine source: [`grille-capacites.json`](grille-capacites.json)
+
+Cells are sourced facts or `nv`. Do not invent values.
 
 Write **unverified** rather than guess. Each cell cites its source (URL).
 

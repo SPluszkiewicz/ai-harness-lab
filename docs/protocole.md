@@ -1,5 +1,7 @@
 # Protocole de test des harness (brouillon, 2026-11-12)
 
+**Banc actuel (T1–T16, EVO-5, sans surveillance) :** [`banc.md`](banc.md). Cette page conserve le protocole et les résultats de l’étude 2026-11-12 (T1–T8).
+
 Statut : proposé, rien n'est lancé. Décisions déjà prises : voir `criteria.md`. Résultats documentaires : `synthese.md`.
 
 ## 1. Candidats
