@@ -2,10 +2,15 @@ cmake_minimum_required(VERSION 3.22)
 
 project(calculator LANGUAGES CXX)
 
-add_library(calculator STATIC src/calculator.cpp)
+option(CALC_STRICT_DIV "Throw CalcError on division by zero instead of returning 0" OFF)
+
+add_library(calculator STATIC src/calculator.cpp src/driver.cpp)
 target_include_directories(calculator PUBLIC src)
 target_compile_features(calculator PRIVATE cxx_std_20)
 target_compile_options(calculator PRIVATE -Wall -Wextra -Wpedantic -Werror)
+if(CALC_STRICT_DIV)
+  target_compile_definitions(calculator PUBLIC CALC_STRICT_DIV)
+endif()
 
 enable_testing()
 include(CTest)

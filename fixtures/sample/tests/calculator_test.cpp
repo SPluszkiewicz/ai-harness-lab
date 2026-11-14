@@ -1,4 +1,5 @@
 #include "calculator.hpp"
+#include "driver.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -40,6 +41,11 @@ TEST_CASE("leading unary minus") {
 
 TEST_CASE("empty input is an error") {
     REQUIRE_THROWS_AS(calc::Evaluate("   "), calc::CalcError);
+}
+
+TEST_CASE("driver wrapper matches Evaluate") {
+    REQUIRE(calc::RunExpression("8/2") == 4);
+    REQUIRE(calc::RunExpression("2^3") == 8);
 }
 
 TEST_CASE("known_bug: multiplication binds tighter than addition") {

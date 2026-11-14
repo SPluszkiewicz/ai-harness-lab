@@ -43,7 +43,12 @@ class Parser {
                 }
                 left %= right;
             } else if (right == 0) {
+#ifdef CALC_STRICT_DIV
+                throw CalcError("division by zero");
+#else
+                // Documented mismatch: the header promises CalcError.
                 return 0;
+#endif
             } else {
                 left /= right;
             }
