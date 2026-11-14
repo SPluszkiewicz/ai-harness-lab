@@ -20,7 +20,7 @@ Si `model_chat` passe T4 et échoue T16, le modèle lit ce qu’on lui donne mai
 
 Sur l’EVO-5 le 14B n’est **pas** le modèle de décision. Sans `BENCH_MODELS`, le runner prend les ids servis qui matchent `models_prefer` dans `matrix.json` : `Qwen3.8`, `Mistral-Small-4`, `gpt-oss`, `Devstral`, `Qwen3-Coder`. Le 14B seulement si tu le listes explicitement.
 
-Pumba et Crush sont **hors matrice** (G3 = non). Les SDK sans CLI one-shot (Zed, llama.vscode, Pochi) non plus.
+Pumba n’est **jamais** dans la matrice. Crush (FSL, usage interne OK), Codex, Zoo, Refact et OpenHands sont dans la matrice : CLI absent → SKIP. Restent hors run : IDE seuls (Zed, Pochi, llama.vscode), cadres SDK, Gemini CLI (G1 = non), Roo/Continue/Void arrêtés.
 
 ## 2. Trois couches, pas une
 
@@ -28,7 +28,7 @@ Pumba et Crush sont **hors matrice** (G3 = non). Les SDK sans CLI one-shot (Zed,
 |---|---|---|---|---|---|
 | `model_chat` | Modèle | aucun | n/a | non | Contrôle « ce que le modèle sait ». Fichiers éventuellement collés dans le prompt (`chat_files`). |
 | `model_tools` | Modèle + boucle minimale | `read_file`, `write_file`, `grep`, `bash` | **non** | non | Contrôle « le modèle parle-t-il tool_calls ? ». `git commit` est *autorisé* : T8 mesure l’obéissance aux règles écrites, pas une allowlist. Deny machine seulement (`format`, `shutdown`, `rm -rf /`). |
-| `opencode`, `goose`, `aider`, `qwen`, `pi`, `kilo`, `mini_swe`, `cline` | Produit | ceux du produit | selon le produit | selon le produit | Config non interactive (yolo/auto + allowlist OpenCode). Binaire absent → SKIP, le run continue. |
+| `opencode`, `goose`, `aider`, `qwen`, `pi`, `kilo`, `mini_swe`, `cline`, `crush`, `codex`, `zoo`, `refact`, `openhands` | Produit | ceux du produit | selon le produit | selon le produit | Config non interactive. Binaire absent → SKIP. |
 
 `model_chat` et `model_tools` sont **obligatoires** (pas de binaire). Les harnesses sont optionnels.
 
@@ -134,11 +134,11 @@ Défaut (`bench/matrix.json`) :
 - 3 essais
 - Modèles : auto depuis `GET /v1/models` ∩ `models_prefer` (Qwen3.8, Mistral Small 4, gpt-oss…). Surcharge : `BENCH_MODELS` (sous-chaîne OK, ex. `Qwen3.8`)
 - 16 tâches
-- 2 baselines + jusqu’à 8 harnesses
+- 2 baselines + jusqu’à 13 harnesses (CLI manquant = SKIP)
 
-Pire cas ~ 10 × 2 × 16 × 3 = 960 essais. À ~2–7 min, ça tient dans deux jours. Un CLI manquant réduit la matrice, ça n’arrête pas le run.
+Pire cas si **tous** les CLI sont installés : ~ 15 × 2 × 16 × 3 = 1440 essais — au-delà de deux jours. N’installe que ce que tu veux mesurer.
 
-Reprise : clé `harness|model|task|trial` déjà présente dans `results/summary.jsonl` → skip. Relancer `run_unattended.ps1` suffit.
+Reprise : une cellule n’est sautée que si `summary.jsonl` a déjà un verdict (`PASS`/`FAIL`/`VACUOUS`/`ERR`/`TIMEOUT`). Une coupure LLM/git/docker **avant** l’écriture est rejouée (3 fois, puis la ligne est gardée). `run_unattended.ps1` relance `run_all.py` tout seul jusqu’à 48 h si le process meurt (watchdog exit 75 inclus). Un prompt CLI reçoit EOF (`stdin` fermé) et un essai ne dépasse pas `BENCH_TIMEOUT`.
 
 ## 7. Lancer sur l’EVO-5 (Windows)
 
@@ -169,6 +169,11 @@ $env:PI_BIN = "..."
 $env:KILO_BIN = "..."
 $env:CLINE_BIN = "..."
 $env:MINI_SWE_BIN = "..."
+$env:CRUSH_BIN = "..."
+$env:CODEX_BIN = "..."
+$env:ZOO_BIN = "..."
+$env:REFACT_BIN = "..."
+$env:OPENHANDS_BIN = "..."
 
 powershell -File scripts\setup_evo5.ps1   # worktree git + conteneur + svn
 python bench\preflight.py                 # fatal seulement si LLM / docker / sample manquent
@@ -208,7 +213,7 @@ Oracles sans LLM : `python bench/test_oracles.py`.
 | `BENCH_DOCKER` | `docker` | Binaire moteur |
 | `BENCH_TOOLS_IMAGE` | `pumba-tools` | Image du conteneur |
 | `BENCH_PYTHON` | `python` | Interpréteur du launcher |
-| `OPENCODE_BIN`, `GOOSE_BIN`, `QWEN_BIN`, `PI_BIN`, `KILO_BIN`, `CLINE_BIN`, `MINI_SWE_BIN` | recherche sous `bench/<nom>/` puis PATH | CLI |
+| `OPENCODE_BIN`, `GOOSE_BIN`, `QWEN_BIN`, `PI_BIN`, `KILO_BIN`, `CLINE_BIN`, `MINI_SWE_BIN`, `CRUSH_BIN`, `CODEX_BIN`, `ZOO_BIN`, `REFACT_BIN`, `OPENHANDS_BIN` | recherche sous `bench/<nom>/` puis PATH | CLI |
 
 Télémétrie coupée côté adapters quand un flag existe (`OPENCODE_DISABLE_AUTOUPDATE`, `QWEN_USAGE_STATISTICS_ENABLED=0`, `AIDER_ANALYTICS=false`, `GOOSE_TELEMETRY=false`, `KILO_TELEMETRY_LEVEL=off`).
 

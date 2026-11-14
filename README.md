@@ -41,7 +41,7 @@ Deux baselines toujours présentes (pas de binaire à installer) :
 | `model_chat` | LLM, fichiers éventuellement collés, **zéro outil** | Ce que le modèle sait lire. VACUOUS sur build/edit/svn/policy. |
 | `model_tools` | LLM + `tool_calls` OpenAI, exécuteur minimal, **sans** repli XML/MCP/UI | Si ça échoue et qu’un harness réussit (surtout 14B), la valeur est le harness, pas le modèle. |
 
-Harness optionnels (skip si le CLI n’est pas là) : OpenCode, Goose, Aider, Qwen Code, Pi, Kilo, mini-swe-agent, Cline. Crush (G3 non) n’est pas dans la matrice.
+Harness optionnels (SKIP si le CLI n’est pas là) : OpenCode, Goose, Aider, Qwen Code, Pi, Kilo, mini-swe, Cline, Crush, Codex, Zoo, Refact, OpenHands. Pumba n’est pas dans la matrice.
 
 ### Une fois sur la machine
 
@@ -63,13 +63,18 @@ $env:PI_BIN = "..."
 $env:KILO_BIN = "..."
 $env:CLINE_BIN = "..."
 $env:MINI_SWE_BIN = "..."
+$env:CRUSH_BIN = "..."
+$env:CODEX_BIN = "..."
+$env:ZOO_BIN = "..."
+$env:REFACT_BIN = "..."
+$env:OPENHANDS_BIN = "..."
 
 powershell -File scripts\setup_evo5.ps1
 python bench\preflight.py
 powershell -File scripts\run_unattended.ps1
 ```
 
-Tu peux verrouiller la session. Si ça crashe, relancer `run_unattended.ps1` reprend (`results/summary.jsonl`). Un harness manquant = SKIP, pas d’arrêt.
+Tu peux verrouiller la session. Si le process meurt, `run_unattended.ps1` le relance (48 h max) et saute les cellules déjà notées. Un harness manquant = SKIP.
 
 Rapport : `bench/results/decision.md` (et `python bench\report.py` à tout moment).
 
