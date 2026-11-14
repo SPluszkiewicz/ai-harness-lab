@@ -1,7 +1,7 @@
 {
   "trials": 3,
   "models_env": "BENCH_MODELS",
-  "comment": "EVO-5: do not default to the 14B. If BENCH_MODELS is unset, pick served ids matching models_prefer (substring). Qwen2.5-Coder-14B is a regression only — set it explicitly if you still want it. Missing harness binaries are skipped. Crush is G3=no so it is off.",
+  "comment": "EVO-5: do not default to the 14B. Missing CLIs SKIP. Pumba is never a harness. Crush is in (FSL allowed internally). IDE-only / SDK-only / G1=no stay out (Zed, Pochi, Gemini, frameworks).",
   "models_prefer": [
     "Qwen3.8",
     "Mistral-Small-4",
@@ -66,6 +66,34 @@
     },
     {
       "id": "cline",
+      "kind": "harness",
+      "required": false
+    },
+    {
+      "id": "crush",
+      "kind": "harness",
+      "required": false,
+      "note": "FSL-1.1-MIT; internal use allowed. yolo via -y."
+    },
+    {
+      "id": "codex",
+      "kind": "harness",
+      "required": false,
+      "note": "Needs llama-server /v1/responses, not only chat/completions."
+    },
+    {
+      "id": "zoo",
+      "kind": "harness",
+      "required": false,
+      "note": "Zoo Code CLI (Roo fork). G1 on CLI is oui*; may SKIP/ERR if no local base_url."
+    },
+    {
+      "id": "refact",
+      "kind": "harness",
+      "required": false
+    },
+    {
+      "id": "openhands",
       "kind": "harness",
       "required": false
     }

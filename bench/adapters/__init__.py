@@ -13,12 +13,21 @@ ADAPTERS = [
     "adapters.kilo",
     "adapters.mini_swe",
     "adapters.cline",
+    "adapters.crush",
+    "adapters.codex",
+    "adapters.zoo",
+    "adapters.refact",
+    "adapters.openhands",
 ]
 
 
 def load_all() -> dict:
     out = {}
     for name in ADAPTERS:
-        mod = import_module(name)
+        try:
+            mod = import_module(name)
+        except Exception as exc:  # noqa: BLE001
+            print(f"SKIP import {name}: {exc}", flush=True)
+            continue
         out[mod.ID] = mod
     return out

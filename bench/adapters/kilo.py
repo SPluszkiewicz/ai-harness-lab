@@ -29,7 +29,18 @@ def run(ctx: RunContext) -> dict:
     env["KILO_TELEMETRY_LEVEL"] = "off"
     env["KILO_DISABLE_LSP_DOWNLOAD"] = "1"
     env["OPENCODE_CONFIG"] = str(cfg)
-    cmd = [binary, "run", "--format", "json", "--dir", str(ctx.project), "-m", f"llama/{ctx.model}", prompt]
+    cmd = [
+        binary,
+        "run",
+        "--auto",
+        "--format",
+        "json",
+        "--dir",
+        str(ctx.project),
+        "-m",
+        f"llama/{ctx.model}",
+        prompt,
+    ]
     out, code, timed_out, _ = run_cmd(cmd, ctx.project, env, ctx.timeout, ctx.log_path)
     tools: list[str] = []
     texts: list[str] = []
